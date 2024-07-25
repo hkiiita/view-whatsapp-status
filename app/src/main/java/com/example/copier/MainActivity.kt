@@ -4,96 +4,96 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ContentResolver
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.text.method.ScrollingMovementMethod
 import android.util.Log
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
-
+import java.io.InputStream
 
 class MainActivity : ComponentActivity() {
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 100
-        private var IMAGES_DUMP_DIRECTORY = ""
-        private var WHATSAPP_MEDIA_DIRECTORY = ""
+        private var IMAGES_DUMP_DIRECTORY_URI: Uri? = null
+        private var WHATSAPP_MEDIA_DIRECTORY_URI: Uri? = null
     }
 
     private lateinit var textView: TextView
 
-
-    //@RequiresApi(Build.VERSION_CODES.R)
+    @RequiresApi(Build.VERSION_CODES.R)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContentView(R.layout.activity_main)
         textView = findViewById(R.id.textView)
         textView.movementMethod = ScrollingMovementMethod()
 
-        // Check for permissions and then copy pictures
         checkPermissions()
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
     private fun checkPermissions() {
         if (!Environment.isExternalStorageManager()) {
-            Toast.makeText(
-                this,
-                "Permission not granted....Asking for permission now !",
-                Toast.LENGTH_LONG
-            ).show()
+            showAlertMessage("Info", "Permission not granted....Asking for permission now!")
             requestPermissions()
-            //initiateCoreLogicExecution()
         } else {
-            // Permission already granted
             initiateCoreLogicExecution()
         }
+    }
+
+    private fun showAlertMessage(title: String, message: String) {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle(title)
+        builder.setMessage(message)
+        builder.setPositiveButton("OK", null)
+        builder.setCancelable(false)
+        builder.show()
     }
 
     private fun showAlertMessageBeforeAction(title: String, message: String, onOkClicked: () -> Unit) {
         val builder = AlertDialog.Builder(this)
         builder.setTitle(title)
         builder.setMessage(message)
-        builder.setPositiveButton("OK") { dialog, which ->
-            // Call the lambda function when OK button is clicked
+        builder.setPositiveButton("OK") { _, _ ->
             onOkClicked.invoke()
         }
-        builder.setCancelable(false) // Prevent dismissing dialog on outside touch or back press
+        builder.setCancelable(false)
         builder.show()
     }
-
 
     private val dumplingDirectoryLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
                 val uri = result.data?.data
                 uri?.let {
-                    IMAGES_DUMP_DIRECTORY = it.toString()
-                    Toast.makeText(this, "Selected directory: $IMAGES_DUMP_DIRECTORY", Toast.LENGTH_LONG).show()
+                    IMAGES_DUMP_DIRECTORY_URI = it
+                    showAlertMessage("Info", "Selected Directory: $IMAGES_DUMP_DIRECTORY_URI")
                     chooseWhatsAppMediaDirectory()
                 }
             } else {
-                Toast.makeText(this, "Directory selection cancelled", Toast.LENGTH_LONG).show()
+                showAlertMessage("Info", "Directory Selection Cancelled: You cancelled the directory selection.")
             }
         }
 
     private fun chooseWhatsAppMediaDirectory() {
-        showAlertMessageBeforeAction("Alert", "Select location where whatsapp stores status images in your phone, generally, its at `/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses`"){
+        showAlertMessageBeforeAction("Alert", "Select location where WhatsApp stores status images in your phone, generally, it's at `/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses`") {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
             whatsAppMediaChooseDirectoryLauncher.launch(intent)
         }
@@ -104,19 +104,17 @@ class MainActivity : ComponentActivity() {
             if (result.resultCode == Activity.RESULT_OK) {
                 val uri = result.data?.data
                 uri?.let {
-                    WHATSAPP_MEDIA_DIRECTORY = it.toString()
-                    Toast.makeText(this, "Selected directory: $WHATSAPP_MEDIA_DIRECTORY", Toast.LENGTH_LONG).show()
-                    queryFilesInDirectory(WHATSAPP_MEDIA_DIRECTORY)
-
+                    WHATSAPP_MEDIA_DIRECTORY_URI = it
+                    showAlertMessage("Info", "Selected Directory: $WHATSAPP_MEDIA_DIRECTORY_URI")
+                    queryFilesInDirectory(WHATSAPP_MEDIA_DIRECTORY_URI)
                 }
             } else {
-                Toast.makeText(this, "Directory selection cancelled", Toast.LENGTH_LONG).show()
+                showAlertMessage("Info", "Directory Selection Cancelled: You cancelled the directory selection.")
             }
         }
 
-
-    private fun initiateCoreLogicExecution(){
-        showAlertMessageBeforeAction("Alert", "Select location where statuses should be stored permanently on your device."){
+    private fun initiateCoreLogicExecution() {
+        showAlertMessageBeforeAction("Alert", "Select location where statuses should be stored permanently on your device.") {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
             dumplingDirectoryLauncher.launch(intent)
         }
@@ -127,123 +125,142 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                intent.data = Uri.parse("package:" + packageName)
+                intent.data = Uri.parse("package:$packageName")
                 startActivityForResult(intent, PERMISSION_REQUEST_CODE)
             } catch (e: Exception) {
-                Toast.makeText(
-                    this,
-                    "Exception occured when getting permission manually : $e",
-                    Toast.LENGTH_LONG
-                ).show()
-                val intent = Intent()
-                intent.action = Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
+                showAlertMessage("Info", "Exception occurred when getting permission manually: $e")
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
                 startActivityForResult(intent, PERMISSION_REQUEST_CODE)
             }
         } else {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(
-                    Manifest.permission.MANAGE_EXTERNAL_STORAGE
-//                    Manifest.permission.READ_EXTERNAL_STORAGE,
-//                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
                 ),
                 PERMISSION_REQUEST_CODE
             )
         }
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                initiateCoreLogicExecution()
+            } else {
+                showAlertMessage("Info", "Permission denied. Cannot access files.")
+            }
+        }
+    }
 
-    // Example function to query files in the specified directory
     @SuppressLint("Range", "SetTextI18n")
-    private fun queryFilesInDirectory(whatsAppMediaDirectory: String) {
-        val selection = "${MediaStore.Files.FileColumns.DATA} LIKE '%$whatsAppMediaDirectory%'"
-        val projection = arrayOf(
-            MediaStore.Files.FileColumns._ID,
-            MediaStore.Files.FileColumns.DISPLAY_NAME,
-            MediaStore.Files.FileColumns.DATA
-        )
-        val sortOrder = "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
+    private fun queryFilesInDirectory(directoryUri: Uri?) {
+        if (directoryUri == null) return
 
-        val contentResolver = contentResolver
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+            directoryUri,
+            DocumentsContract.getTreeDocumentId(directoryUri)
+        )
+
         val cursor = contentResolver.query(
-            MediaStore.Files.getContentUri("external"),
-            projection,
-            selection,
+            childrenUri,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE
+            ),
             null,
-            sortOrder
+            null,
+            null
         )
 
         val stringBuilder = StringBuilder()
-
         var count = 0
-        cursor?.use { cursor ->
-            while (cursor.moveToNext()) {
-                count++
-                val displayName =
-                    cursor.getString(cursor.getColumnIndex(MediaStore.Files.FileColumns.DISPLAY_NAME))
-                val data =
-                    cursor.getString(cursor.getColumnIndex(MediaStore.Files.FileColumns.DATA))
-                val fileId = cursor.getLong(cursor.getColumnIndex(MediaStore.Files.FileColumns._ID))
 
-                val file = File(data)
-                if (file.isDirectory) {
-                    // Skip directories
+        cursor?.use {
+            while (it.moveToNext()) {
+                val documentId = it.getString(it.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID))
+                val displayName = it.getString(it.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME))
+                val mimeType = it.getString(it.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE))
+
+                if (mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
                     continue
                 }
 
-
-                val fileInfo = "File Name: $displayName, \nFile Path: $data, \nFile ID: $fileId"
-                Log.d("-------- MainActivity", fileInfo)
+                val documentUri = DocumentsContract.buildDocumentUriUsingTree(directoryUri, documentId)
+                val fileInfo = "File Name: $displayName, \nFile ID: $documentId"
+                Log.d("MainActivity", fileInfo)
                 stringBuilder.append(fileInfo).append("\n\n")
-                // Perform operations with the file data
-                val inputStream = FileInputStream(File(data))
-                val outputStream = FileOutputStream(File(IMAGES_DUMP_DIRECTORY, displayName))
-                val buffer = ByteArray(2048)
-                var length: Int
+
                 try {
-                    while (inputStream.read(buffer).also { length = it } > 0) {
-                        outputStream.write(buffer, 0, length)
-                    }
-
-                    //TODO://Optionally delete the original file after copying
-                    // contentResolver.delete(uri, null, null)
-
-                } catch (e: IOException) {
+                    copyFile(documentUri, IMAGES_DUMP_DIRECTORY_URI)
+                    count++
+                } catch (e: Exception) {
+                    showAlertMessage("Info", "Exception copying file: $e")
                     Log.e("MainActivity", "Error copying file: $displayName", e)
-                    Toast.makeText(this, "Exception copying file : $e", Toast.LENGTH_LONG).show()
-                } finally {
-                    inputStream.close()
-                    outputStream.close()
                 }
-
             }
         }
+
         cursor?.close()
         stringBuilder.append("Successfully wrote $count files")
         textView.text = stringBuilder.toString()
-        Toast.makeText(this, "Successfully wrote $count files", Toast.LENGTH_LONG).show()
-
+        showAlertMessage("Info", "Successfully wrote $count files")
     }
 
+    private fun copyFile(srcUri: Uri, destUri: Uri?) {
+        if (destUri == null) {
+            Log.e("MainActivity", "Destination URI is null")
+            return
+        }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                if (Environment.isExternalStorageManager()) {
-                    // Permission granted
-                    initiateCoreLogicExecution()
-                } else {
-                    // Permission denied
-                    Toast.makeText(
-                        this,
-                        "Permission denied. Cannot access files.",
-                        Toast.LENGTH_LONG
-                    ).show()
+        val displayName = getFileNameFromUri(srcUri) ?: return
+
+        val destDocumentUri = DocumentsContract.buildDocumentUriUsingTree(
+            destUri,
+            DocumentsContract.getTreeDocumentId(destUri)
+        )
+
+        val destFileUri = DocumentsContract.createDocument(
+            contentResolver,
+            destDocumentUri,
+            "image/jpeg", // Assuming the files being copied are images, adjust the MIME type as needed
+            displayName
+        ) ?: return
+
+        try {
+            contentResolver.openInputStream(srcUri).use { input ->
+                if (input == null) {
+                    Log.e("MainActivity", "InputStream is null for URI: $srcUri")
+                    return
+                }
+                contentResolver.openOutputStream(destFileUri).use { output ->
+                    val buffer = ByteArray(1024)
+                    var length: Int
+                    while (input.read(buffer).also { length = it } > 0) {
+                        output?.write(buffer, 0, length)
+                    }
                 }
             }
+            Log.d("MainActivity", "Copied file: $displayName")
+        } catch (e: IOException) {
+            showAlertMessage("Info", "Error copying file: $displayName")
+            Log.e("MainActivity", "Error copying file: $displayName", e)
         }
     }
 
-
+    private fun getFileNameFromUri(uri: Uri): String? {
+        var fileName: String? = null
+        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0) {
+                    fileName = cursor.getString(nameIndex)
+                }
+            }
+        }
+        return fileName
+    }
 }
