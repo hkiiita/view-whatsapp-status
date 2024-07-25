@@ -2,8 +2,9 @@ package com.example.copier
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -16,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import java.io.File
@@ -28,9 +30,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 100
-        private const val WHATSAPP_STORAGE_LOCATION =
-            "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses"
-        private const val IMAGES_DUMP_DIRECTORY = "/storage/emulated/0/DCIM/Screenshots/Dumplings"
+        private var IMAGES_DUMP_DIRECTORY = ""
+        private var WHATSAPP_MEDIA_DIRECTORY = ""
     }
 
     private lateinit var textView: TextView
@@ -43,7 +44,6 @@ class MainActivity : ComponentActivity() {
         setContentView(R.layout.activity_main)
         textView = findViewById(R.id.textView)
         textView.movementMethod = ScrollingMovementMethod()
-
 
         // Check for permissions and then copy pictures
         checkPermissions()
@@ -58,13 +58,69 @@ class MainActivity : ComponentActivity() {
                 Toast.LENGTH_LONG
             ).show()
             requestPermissions()
+            //initiateCoreLogicExecution()
         } else {
             // Permission already granted
-            Toast.makeText(this, "Working ......", Toast.LENGTH_LONG).show()
-            queryFilesInDirectory(WHATSAPP_STORAGE_LOCATION)
+            initiateCoreLogicExecution()
         }
     }
 
+    private fun showAlertMessageBeforeAction(title: String, message: String, onOkClicked: () -> Unit) {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle(title)
+        builder.setMessage(message)
+        builder.setPositiveButton("OK") { dialog, which ->
+            // Call the lambda function when OK button is clicked
+            onOkClicked.invoke()
+        }
+        builder.setCancelable(false) // Prevent dismissing dialog on outside touch or back press
+        builder.show()
+    }
+
+
+    private val dumplingDirectoryLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val uri = result.data?.data
+                uri?.let {
+                    IMAGES_DUMP_DIRECTORY = it.toString()
+                    Toast.makeText(this, "Selected directory: $IMAGES_DUMP_DIRECTORY", Toast.LENGTH_LONG).show()
+                    chooseWhatsAppMediaDirectory()
+                }
+            } else {
+                Toast.makeText(this, "Directory selection cancelled", Toast.LENGTH_LONG).show()
+            }
+        }
+
+    private fun chooseWhatsAppMediaDirectory() {
+        showAlertMessageBeforeAction("Alert", "Select location where whatsapp stores status images in your phone, generally, its at `/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses`"){
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            whatsAppMediaChooseDirectoryLauncher.launch(intent)
+        }
+    }
+
+    private val whatsAppMediaChooseDirectoryLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val uri = result.data?.data
+                uri?.let {
+                    WHATSAPP_MEDIA_DIRECTORY = it.toString()
+                    Toast.makeText(this, "Selected directory: $WHATSAPP_MEDIA_DIRECTORY", Toast.LENGTH_LONG).show()
+                    queryFilesInDirectory(WHATSAPP_MEDIA_DIRECTORY)
+
+                }
+            } else {
+                Toast.makeText(this, "Directory selection cancelled", Toast.LENGTH_LONG).show()
+            }
+        }
+
+
+    private fun initiateCoreLogicExecution(){
+        showAlertMessageBeforeAction("Alert", "Select location where statuses should be stored permanently on your device."){
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            dumplingDirectoryLauncher.launch(intent)
+        }
+    }
 
     @RequiresApi(Build.VERSION_CODES.R)
     private fun requestPermissions() {
@@ -99,8 +155,8 @@ class MainActivity : ComponentActivity() {
 
     // Example function to query files in the specified directory
     @SuppressLint("Range", "SetTextI18n")
-    private fun queryFilesInDirectory(directoryPath: String) {
-        val selection = "${MediaStore.Files.FileColumns.DATA} LIKE '%$directoryPath%'"
+    private fun queryFilesInDirectory(whatsAppMediaDirectory: String) {
+        val selection = "${MediaStore.Files.FileColumns.DATA} LIKE '%$whatsAppMediaDirectory%'"
         val projection = arrayOf(
             MediaStore.Files.FileColumns._ID,
             MediaStore.Files.FileColumns.DISPLAY_NAME,
@@ -149,8 +205,7 @@ class MainActivity : ComponentActivity() {
                         outputStream.write(buffer, 0, length)
                     }
 
-
-                    // Optionally delete the original file after copying
+                    //TODO://Optionally delete the original file after copying
                     // contentResolver.delete(uri, null, null)
 
                 } catch (e: IOException) {
@@ -177,7 +232,7 @@ class MainActivity : ComponentActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 if (Environment.isExternalStorageManager()) {
                     // Permission granted
-                    queryFilesInDirectory(WHATSAPP_STORAGE_LOCATION)
+                    initiateCoreLogicExecution()
                 } else {
                     // Permission denied
                     Toast.makeText(
@@ -190,23 +245,5 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                // Permission granted
-                Toast.makeText(this, "Working....", Toast.LENGTH_LONG).show()
-                queryFilesInDirectory(WHATSAPP_STORAGE_LOCATION)
-            } else {
-                // Permission denied
-                Toast.makeText(this, "Permission denied. Cannot access files.", Toast.LENGTH_LONG)
-                    .show()
-            }
-        }
-    }
 
 }
