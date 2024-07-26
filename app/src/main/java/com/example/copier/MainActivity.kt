@@ -23,6 +23,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
+import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -37,6 +38,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private lateinit var textView: TextView
+    private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
 
     @RequiresApi(Build.VERSION_CODES.R)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,6 +48,11 @@ class MainActivity : ComponentActivity() {
         textView.movementMethod = ScrollingMovementMethod()
 
         checkPermissions()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        coroutineScope.cancel() // Cancel the coroutine when the activity is destroyed
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
@@ -62,7 +69,7 @@ class MainActivity : ComponentActivity() {
         val builder = AlertDialog.Builder(this)
         builder.setTitle(title)
         builder.setMessage(message)
-        builder.setPositiveButton("OK", ){ _, _ ->
+        builder.setPositiveButton("OK") { _, _ ->
             onOkClicked.invoke()
         }
         builder.setCancelable(false)
@@ -89,7 +96,6 @@ class MainActivity : ComponentActivity() {
                     showAlertMessage("Info", "Selected Directory: $IMAGES_DUMP_DIRECTORY_URI"){
                         chooseWhatsAppMediaDirectory()
                     }
-
                 }
             } else {
                 showAlertMessage("Info", "Directory Selection Cancelled: You cancelled the directory selection."){}
@@ -110,7 +116,7 @@ class MainActivity : ComponentActivity() {
                 uri?.let {
                     WHATSAPP_MEDIA_DIRECTORY_URI = it
                     showAlertMessage("Info", "Selected Directory: $WHATSAPP_MEDIA_DIRECTORY_URI") {
-                        queryFilesInDirectory(WHATSAPP_MEDIA_DIRECTORY_URI)
+                        startPeriodicQuery()
                     }
                 }
             } else {
@@ -133,11 +139,10 @@ class MainActivity : ComponentActivity() {
                 intent.data = Uri.parse("package:$packageName")
                 startActivityForResult(intent, PERMISSION_REQUEST_CODE)
             } catch (e: Exception) {
-                showAlertMessage("Info", "Exception occurred when getting permission manually: $e"){
+                showAlertMessage("Info", "Exception occurred when getting permission manually: $e") {
                     val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
                     startActivityForResult(intent, PERMISSION_REQUEST_CODE)
                 }
-
             }
         } else {
             ActivityCompat.requestPermissions(
@@ -205,10 +210,9 @@ class MainActivity : ComponentActivity() {
                     copyFile(documentUri, IMAGES_DUMP_DIRECTORY_URI)
                     count++
                 } catch (e: Exception) {
-                    showAlertMessage("Info", "Exception copying file: $e"){
+                    showAlertMessage("Info", "Exception copying file: $e") {
                         Log.e("MainActivity", "Error copying file: $displayName", e)
                     }
-
                 }
             }
         }
@@ -255,10 +259,9 @@ class MainActivity : ComponentActivity() {
             }
             Log.d("MainActivity", "Copied file: $displayName")
         } catch (e: IOException) {
-            showAlertMessage("Info", "Error copying file: $displayName"){
+            showAlertMessage("Info", "Error copying file: $displayName") {
                 Log.e("MainActivity", "Error copying file: $displayName", e)
             }
-
         }
     }
 
@@ -273,5 +276,14 @@ class MainActivity : ComponentActivity() {
             }
         }
         return fileName
+    }
+
+    private fun startPeriodicQuery() {
+        coroutineScope.launch {
+            while (true) {
+                queryFilesInDirectory(WHATSAPP_MEDIA_DIRECTORY_URI)
+                delay(60 * 1000) // Wait for 1 minute
+            }
+        }
     }
 }

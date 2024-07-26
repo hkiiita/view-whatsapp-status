@@ -68,4 +68,10 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    implementation(libs.kotlin.stdlib)
+    implementation(libs.androidx.core.ktx.v160)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.material.v140)
+    implementation(libs.androidx.constraintlayout)
+    implementation(libs.kotlinx.coroutines.android)
 }
