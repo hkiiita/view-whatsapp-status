@@ -51,18 +51,20 @@ class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.R)
     private fun checkPermissions() {
         if (!Environment.isExternalStorageManager()) {
-            showAlertMessage("Info", "Permission not granted....Asking for permission now!")
+            showAlertMessage("Info", "Permission not granted....Asking for permission now!"){}
             requestPermissions()
         } else {
             initiateCoreLogicExecution()
         }
     }
 
-    private fun showAlertMessage(title: String, message: String) {
+    private fun showAlertMessage(title: String, message: String, onOkClicked: () -> Unit) {
         val builder = AlertDialog.Builder(this)
         builder.setTitle(title)
         builder.setMessage(message)
-        builder.setPositiveButton("OK", null)
+        builder.setPositiveButton("OK", ){ _, _ ->
+            onOkClicked.invoke()
+        }
         builder.setCancelable(false)
         builder.show()
     }
@@ -84,11 +86,13 @@ class MainActivity : ComponentActivity() {
                 val uri = result.data?.data
                 uri?.let {
                     IMAGES_DUMP_DIRECTORY_URI = it
-                    showAlertMessage("Info", "Selected Directory: $IMAGES_DUMP_DIRECTORY_URI")
-                    chooseWhatsAppMediaDirectory()
+                    showAlertMessage("Info", "Selected Directory: $IMAGES_DUMP_DIRECTORY_URI"){
+                        chooseWhatsAppMediaDirectory()
+                    }
+
                 }
             } else {
-                showAlertMessage("Info", "Directory Selection Cancelled: You cancelled the directory selection.")
+                showAlertMessage("Info", "Directory Selection Cancelled: You cancelled the directory selection."){}
             }
         }
 
@@ -105,11 +109,12 @@ class MainActivity : ComponentActivity() {
                 val uri = result.data?.data
                 uri?.let {
                     WHATSAPP_MEDIA_DIRECTORY_URI = it
-                    showAlertMessage("Info", "Selected Directory: $WHATSAPP_MEDIA_DIRECTORY_URI")
-                    queryFilesInDirectory(WHATSAPP_MEDIA_DIRECTORY_URI)
+                    showAlertMessage("Info", "Selected Directory: $WHATSAPP_MEDIA_DIRECTORY_URI") {
+                        queryFilesInDirectory(WHATSAPP_MEDIA_DIRECTORY_URI)
+                    }
                 }
             } else {
-                showAlertMessage("Info", "Directory Selection Cancelled: You cancelled the directory selection.")
+                showAlertMessage("Info", "Directory Selection Cancelled: You cancelled the directory selection."){}
             }
         }
 
@@ -128,9 +133,11 @@ class MainActivity : ComponentActivity() {
                 intent.data = Uri.parse("package:$packageName")
                 startActivityForResult(intent, PERMISSION_REQUEST_CODE)
             } catch (e: Exception) {
-                showAlertMessage("Info", "Exception occurred when getting permission manually: $e")
-                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                startActivityForResult(intent, PERMISSION_REQUEST_CODE)
+                showAlertMessage("Info", "Exception occurred when getting permission manually: $e"){
+                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    startActivityForResult(intent, PERMISSION_REQUEST_CODE)
+                }
+
             }
         } else {
             ActivityCompat.requestPermissions(
@@ -150,7 +157,7 @@ class MainActivity : ComponentActivity() {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 initiateCoreLogicExecution()
             } else {
-                showAlertMessage("Info", "Permission denied. Cannot access files.")
+                showAlertMessage("Info", "Permission denied. Cannot access files."){}
             }
         }
     }
@@ -198,8 +205,10 @@ class MainActivity : ComponentActivity() {
                     copyFile(documentUri, IMAGES_DUMP_DIRECTORY_URI)
                     count++
                 } catch (e: Exception) {
-                    showAlertMessage("Info", "Exception copying file: $e")
-                    Log.e("MainActivity", "Error copying file: $displayName", e)
+                    showAlertMessage("Info", "Exception copying file: $e"){
+                        Log.e("MainActivity", "Error copying file: $displayName", e)
+                    }
+
                 }
             }
         }
@@ -207,7 +216,7 @@ class MainActivity : ComponentActivity() {
         cursor?.close()
         stringBuilder.append("Successfully wrote $count files")
         textView.text = stringBuilder.toString()
-        showAlertMessage("Info", "Successfully wrote $count files")
+        showAlertMessage("Info", "Successfully wrote $count files"){}
     }
 
     private fun copyFile(srcUri: Uri, destUri: Uri?) {
@@ -246,8 +255,10 @@ class MainActivity : ComponentActivity() {
             }
             Log.d("MainActivity", "Copied file: $displayName")
         } catch (e: IOException) {
-            showAlertMessage("Info", "Error copying file: $displayName")
-            Log.e("MainActivity", "Error copying file: $displayName", e)
+            showAlertMessage("Info", "Error copying file: $displayName"){
+                Log.e("MainActivity", "Error copying file: $displayName", e)
+            }
+
         }
     }
 
